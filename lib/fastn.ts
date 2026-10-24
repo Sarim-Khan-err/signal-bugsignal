@@ -26,6 +26,7 @@ export async function sendReportCreatedToFastn(report: Report): Promise<FastnDel
     eventId: report.id,
     tenantId: report.tenantId,
     customerId: `signal-${report.tenantId}`,
+    callbackUrl: `${(process.env.SIGNAL_PUBLIC_URL || "https://signal-bugsignal.vercel.app").replace(/\/$/, "")}/api/webhooks/fastn-callback`,
     report: {
       id: report.id,
       title: report.title,
