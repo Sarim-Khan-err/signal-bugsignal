@@ -55,7 +55,7 @@ The current application uses Next.js server routes and Node APIs. Deploy it on a
 5. Deploy a preview first, verify login, cross-workspace isolation, report create/update, and email delivery, then promote the production deployment.
 6. Set the production site URL in Supabase Auth URL configuration and use HTTPS. Review recovery, backup, access, and retention settings before onboarding customers.
 
-There is no connected GitHub repository, Supabase project, Resend account, or Vercel project attached to this workspace, so those account creation, secret, and deployment steps remain external setup tasks. The app code and database migration are prepared here; the app is not yet publicly deployed.
+A private GitHub repository now contains the reviewed source at `Sarim-Khan-err/signal-bugsignal`. Supabase and Resend are not connected, and the Vercel project has not been created, so hosted data, customer email, and public deployment still need provider setup. The app is not yet publicly deployed.
 
 ## Fastn setup
 
