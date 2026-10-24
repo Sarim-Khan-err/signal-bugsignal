@@ -55,6 +55,22 @@ export async function signInWithPassword(email: string, password: string) {
   return { session, user, tenantIds: memberships.map((item) => item.workspace_id), cookie: makeCookie(session) };
 }
 
+export async function completeHostedSetup(accessToken: string, refreshToken: string, expiresIn: number, password: string) {
+  const user = await getUser(accessToken);
+  if (!user?.id) throw new Error("This setup link is invalid or has expired. Request a new password setup email.");
+  const update = await providerFetch("/auth/v1/user", accessToken, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }),
+  });
+  const updated = await update.json().catch(() => ({})) as Record<string, unknown>;
+  if (!update.ok) throw new Error(typeof updated.msg === "string" ? updated.msg : typeof updated.message === "string" ? updated.message : "Could not set your password. Request a new setup link and try again.");
+  const membershipResponse = await providerFetch(`/rest/v1/workspace_memberships?select=workspace_id&user_id=eq.${encodeURIComponent(user.id)}`, accessToken);
+  if (!membershipResponse.ok) throw new Error("Your workspace access could not be loaded. Contact your administrator.");
+  const memberships = await membershipResponse.json() as { workspace_id: string }[];
+  if (!Array.isArray(memberships) || memberships.length === 0) throw new Error("Your account has no workspace access yet. Contact your administrator.");
+  const session: HostedSession = { access_token: accessToken, refresh_token: refreshToken, expires_at: Math.floor(Date.now() / 1000) + expiresIn };
+  return { user, tenantIds: memberships.map((item) => item.workspace_id), cookie: makeCookie(session) };
+}
+
 async function refresh(session: HostedSession): Promise<HostedSession | null> {
   const { url, key } = config();
   const response = await fetch(`${url}/auth/v1/token?grant_type=refresh_token`, {
@@ -183,3 +199,4 @@ function rowToReport(row: Record<string, unknown>): Report {
     created: String(row.created_at ?? ""), lastUpdate: String(row.updated_at ?? row.created_at ?? ""), description: row.description,
   };
 }
+
