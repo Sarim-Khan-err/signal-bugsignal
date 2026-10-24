@@ -17,7 +17,16 @@ export async function POST(request: Request) {
   if (!process.env.FASTN_API_KEY) return NextResponse.json({ error: "Fastn server credentials are missing. Add FASTN_API_KEY to the private server environment." }, { status: 503 });
   try {
     const tenant = tenantId === "northstar" ? { customerName: "Northstar Cloud" } : { customerName: "Orbit Analytics" };
-    const minted = await mintEmbedToken({ customerId: `signal-${tenantId}`, customerName: tenant.customerName });
+    const customerId = `signal-${tenantId}`;
+    const minted = await mintEmbedToken({
+      customerId,
+      customerName: tenant.customerName,
+      fetch: (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set("x-end-org-id", customerId);
+        return fetch(input, { ...init, headers });
+      },
+    });
     const response = NextResponse.json(minted);
     if (access?.refreshedCookie) setHostedCookie(response, access.refreshedCookie);
     response.headers.set("Cache-Control", "no-store");
