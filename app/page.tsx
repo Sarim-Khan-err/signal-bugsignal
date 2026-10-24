@@ -21,6 +21,9 @@ export default function Home() {
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginPassword, setLoginPassword] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
+  const [setupLink, setSetupLink] = useState<{ accessToken: string; refreshToken: string; expiresIn: number; recovery: boolean } | null>(null);
+  const [setupPassword, setSetupPassword] = useState("");
+  const [setupPasswordConfirm, setSetupPasswordConfirm] = useState("");
   const [authMode, setAuthMode] = useState<"local" | "supabase">("local");
   const [memberWorkspaces, setMemberWorkspaces] = useState<string[]>([]);
   const [sendingReportId, setSendingReportId] = useState<string | null>(null);
@@ -42,12 +45,33 @@ export default function Home() {
   const counts = { all: current.length, needs: current.filter(r => r.status === "Fixed").length, linked: current.filter(r => r.issue !== "Not linked").length };
   useEffect(() => {
     let cancelled = false;
+    const initialize = async () => {
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const accessToken = hash.get("access_token");
+    const refreshToken = hash.get("refresh_token");
+    const expiresIn = Number(hash.get("expires_in"));
+    const linkType = hash.get("type");
+    if (accessToken && refreshToken && Number.isInteger(expiresIn) && expiresIn > 0 && (linkType === "invite" || linkType === "recovery")) {
+      setSetupLink({ accessToken, refreshToken, expiresIn, recovery: linkType === "recovery" });
+      setAuthMode("supabase");
+      setAuthState("signed-out");
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      return;
+    }
+    const authError = hash.get("error_description");
+    if (authError) {
+      setAuthMode("supabase");
+      setLoginError(authError.replace(/\+/g, " "));
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
     fetch("/api/auth/session", { cache: "no-store" }).then(async response => {
       const data = await response.json();
       if (cancelled) return;
       if (response.ok) { setTenantId(data.tenantId); setAuthMode(data.authMode === "supabase" ? "supabase" : "local"); setMemberWorkspaces(data.tenantIds || [data.tenantId]); setLoginEmail(data.email || ""); setAuthState("signed-in"); }
       else { setAuthMode(data.authMode === "supabase" ? "supabase" : "local"); setAuthState("signed-out"); }
     }).catch(() => { if (!cancelled) setAuthState("signed-out"); });
+    };
+    void initialize();
     return () => { cancelled = true; };
   }, []);
   useEffect(() => {
@@ -71,6 +95,20 @@ export default function Home() {
       if (!response.ok) throw new Error(data.error || "Could not sign in");
       setTenantId(data.tenantId); setAuthMode(data.authMode === "supabase" ? "supabase" : "local"); setMemberWorkspaces(data.tenantIds || [data.tenantId]); setReports(emptyReports); setLoadedTenantId(null); setLoginPassword(""); setAuthState("signed-in");
     } catch (error) { setLoginError(error instanceof Error ? error.message : "Could not sign in"); }
+    finally { setLoginBusy(false); }
+  };
+  const finishSetup = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!setupLink) return;
+    if (setupPassword.length < 12) { setLoginError("Choose a password with at least 12 characters."); return; }
+    if (setupPassword !== setupPasswordConfirm) { setLoginError("The passwords don’t match."); return; }
+    setLoginBusy(true); setLoginError("");
+    try {
+      const response = await fetch("/api/auth/setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accessToken: setupLink.accessToken, refreshToken: setupLink.refreshToken, expiresIn: setupLink.expiresIn, password: setupPassword }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not complete account setup");
+      setTenantId(data.tenantId); setAuthMode("supabase"); setMemberWorkspaces(data.tenantIds || [data.tenantId]); setLoginEmail(data.email || ""); setReports(emptyReports); setLoadedTenantId(null); setSetupLink(null); setSetupPassword(""); setSetupPasswordConfirm(""); setAuthState("signed-in");
+    } catch (error) { setLoginError(error instanceof Error ? error.message : "Could not complete account setup"); }
     finally { setLoginBusy(false); }
   };
   const switchWorkspace = async () => {
@@ -114,7 +152,7 @@ export default function Home() {
     finally { setSaving(false); }
   };
 
-  if (authState !== "signed-in") return <main className="auth-screen"><section className="auth-card"><div className="brand auth-brand"><span className="brand-mark"><PulseIcon /></span><span>signal<span className="brand-period">.</span></span></div><div className="eyebrow"><span className="eyebrow-line" /> CUSTOMER SUPPORT, IN SYNC</div><h1>{authState === "checking" ? "Checking your workspace…" : "Welcome back"}</h1><p className="auth-intro">Sign in with your individual account. Your workspace access determines which customer reports you can see.</p>{authState === "checking" ? <div className="auth-check"><span className="integration-spinner" /> Checking secure session…</div> : <form className="auth-form" onSubmit={login}>{authMode === "local" && <label>WORKSPACE<select value={tenantId} onChange={event => setTenantId(event.target.value)}><option value="northstar">Northstar Cloud · Pro</option><option value="orbit">Orbit Analytics · Growth</option></select></label>}{authMode === "supabase" && <label>EMAIL<input required autoComplete="username" type="email" value={loginEmail} onChange={event => setLoginEmail(event.target.value)} placeholder="you@company.com" /></label>}<label>{authMode === "supabase" ? "PASSWORD" : "LOCAL PREVIEW PASSWORD"}<input required autoComplete="current-password" type="password" value={loginPassword} onChange={event => setLoginPassword(event.target.value)} placeholder="Enter your password" /></label>{loginError && <p className="auth-error" role="alert">{loginError}</p>}<button className="primary-button" disabled={loginBusy}>{loginBusy ? "Signing in…" : "Sign in"}</button></form>}<div className="auth-foot">{authMode === "supabase" ? "Workspace access is managed by your administrator." : "Local preview account. Hosted accounts activate when Supabase is configured."}</div></section></main>;
+  if (authState !== "signed-in") return <main className="auth-screen"><section className="auth-card"><div className="brand auth-brand"><span className="brand-mark"><PulseIcon /></span><span>signal<span className="brand-period">.</span></span></div><div className="eyebrow"><span className="eyebrow-line" /> CUSTOMER SUPPORT, IN SYNC</div><h1>{authState === "checking" ? "Checking your workspace…" : setupLink ? (setupLink.recovery ? "Choose a new password" : "Set up your account") : "Welcome back"}</h1><p className="auth-intro">{setupLink ? "Choose a secure password to finish setting up your Signal account and open your workspaces." : "Sign in with your individual account. Your workspace access determines which customer reports you can see."}</p>{authState === "checking" ? <div className="auth-check"><span className="integration-spinner" /> Checking secure session…</div> : setupLink ? <form className="auth-form" onSubmit={finishSetup}><label>NEW PASSWORD<input required minLength={12} maxLength={256} autoComplete="new-password" type="password" value={setupPassword} onChange={event => setSetupPassword(event.target.value)} placeholder="At least 12 characters" /></label><label>CONFIRM PASSWORD<input required minLength={12} maxLength={256} autoComplete="new-password" type="password" value={setupPasswordConfirm} onChange={event => setSetupPasswordConfirm(event.target.value)} placeholder="Enter it again" /></label>{loginError && <p className="auth-error" role="alert">{loginError}</p>}<button className="primary-button" disabled={loginBusy}>{loginBusy ? "Setting up account…" : "Set password and continue"}</button></form> : <form className="auth-form" onSubmit={login}>{authMode === "local" && <label>WORKSPACE<select value={tenantId} onChange={event => setTenantId(event.target.value)}><option value="northstar">Northstar Cloud · Pro</option><option value="orbit">Orbit Analytics · Growth</option></select></label>}{authMode === "supabase" && <label>EMAIL<input required autoComplete="username" type="email" value={loginEmail} onChange={event => setLoginEmail(event.target.value)} placeholder="you@company.com" /></label>}<label>{authMode === "supabase" ? "PASSWORD" : "LOCAL PREVIEW PASSWORD"}<input required autoComplete="current-password" type="password" value={loginPassword} onChange={event => setLoginPassword(event.target.value)} placeholder="Enter your password" /></label>{loginError && <p className="auth-error" role="alert">{loginError}</p>}<button className="primary-button" disabled={loginBusy}>{loginBusy ? "Signing in…" : "Sign in"}</button></form>}<div className="auth-foot">{authMode === "supabase" ? "Workspace access is managed by your administrator." : "Local preview account. Hosted accounts activate when Supabase is configured."}</div></section></main>;
 
   return <main className="app-shell">
     <aside className="sidebar">
@@ -169,3 +207,4 @@ function BellIcon(){return <svg viewBox="0 0 20 20" fill="none"><path d="M15.5 7
 function HelpIcon(){return <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.5"/><path d="M7.8 7.4a2.2 2.2 0 1 1 3.6 1.7c-.8.6-1.4 1-1.4 2.1M10 14.2v.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
 function PlusIcon(){return <svg viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
 function SendIcon(){return <svg viewBox="0 0 20 20" fill="none"><path d="m17 3-7.2 14-1.6-6.2L2 9.2 17 3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="m8.2 10.8 4-3.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
+
