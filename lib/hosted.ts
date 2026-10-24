@@ -242,3 +242,4 @@ function rowToReport(row: Record<string, unknown>): Report {
     created: String(row.created_at ?? ""), lastUpdate: String(row.updated_at ?? row.created_at ?? ""), description: row.description,
   };
 }
+
