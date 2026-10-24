@@ -159,7 +159,7 @@ export default function Home() {
       const data = await response.json();
       if (!response.ok) { if (response.status === 401) await signOut(); throw new Error(data.error || "Could not save report"); }
       const report = data.report as Report;
-      setReports(prev => ({ ...prev, [tenantId]: [report, ...prev[tenantId]] })); setSelected(report.id); setFilter("All reports"); setForm({ title: "", customer: "", email: "", product: "", description: "", priority: "Medium" }); setShowNew(false); setNotice("Report saved to this workspace.");
+      setReports(prev => ({ ...prev, [tenantId]: [report, ...prev[tenantId]] })); setSelected(report.id); setFilter("All reports"); setForm({ title: "", customer: "", email: "", product: "", description: "", priority: "Medium" }); setShowNew(false); setNotice(data.fastnDelivery === "delivered" ? "Report saved and sent to Fastn triage." : data.fastnDelivery === "failed" ? "Report saved, but Fastn could not confirm the triage handoff. Check Fastn Activity before retrying." : "Report saved to this workspace.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Could not save report"); }
     finally { setSaving(false); }
   };
