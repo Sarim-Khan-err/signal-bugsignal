@@ -23,7 +23,14 @@ export async function POST(request: Request) {
     response.headers.set("Cache-Control", "no-store");
     return response;
   } catch (error) {
-    console.error("Fastn embed token request failed", error instanceof Error ? error.message : "unknown error");
+    const fastnError = error as Error & { status?: number; code?: string; hint?: string; detail?: unknown };
+    console.error("Fastn embed token request failed", JSON.stringify({
+      message: fastnError.message,
+      status: fastnError.status,
+      code: fastnError.code,
+      hint: fastnError.hint,
+      detail: fastnError.detail,
+    }));
     return NextResponse.json({ error: "Fastn could not issue a workspace token. Check the server API key and its customer provisioning permissions." }, { status: 502 });
   }
 }
