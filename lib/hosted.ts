@@ -71,6 +71,18 @@ export async function completeHostedSetup(accessToken: string, refreshToken: str
   return { user, tenantIds: memberships.map((item) => item.workspace_id), cookie: makeCookie(session) };
 }
 
+export async function sendPasswordRecovery(email: string) {
+  const { url, key } = config();
+  const response = await fetch(`${url}/auth/v1/recover?redirect_to=${encodeURIComponent("https://signal-bugsignal.vercel.app/")}`, {
+    method: "POST", headers: { "Content-Type": "application/json", apikey: key },
+    body: JSON.stringify({ email }), cache: "no-store",
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(typeof data.msg === "string" ? data.msg : typeof data.message === "string" ? data.message : "Could not send a password reset email right now.");
+  }
+}
+
 async function refresh(session: HostedSession): Promise<HostedSession | null> {
   const { url, key } = config();
   const response = await fetch(`${url}/auth/v1/token?grant_type=refresh_token`, {
