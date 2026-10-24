@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createReport, isTenantId, listReports } from "@/lib/store";
 import { tenantForRequest } from "@/lib/auth";
 import { hostedAuthConfigured, hostedCreateReport, hostedReports, setHostedCookie, workspaceAccess } from "@/lib/hosted";
+import { sendReportCreatedToFastn } from "@/lib/fastn";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,7 +58,8 @@ export async function POST(request: Request, { params }: Context) {
     priority,
   } as const;
   const report = access ? await hostedCreateReport(access, reportInput) : await createReport(tenantId, reportInput);
-  const response = NextResponse.json({ report }, { status: 201, headers: { "Cache-Control": "no-store" } });
+  const fastn = await sendReportCreatedToFastn(report);
+  const response = NextResponse.json({ report, fastn }, { status: 201, headers: { "Cache-Control": "no-store" } });
   if (access?.refreshedCookie) setHostedCookie(response, access.refreshedCookie);
   return response;
 }

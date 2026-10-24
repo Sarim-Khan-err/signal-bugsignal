@@ -7,6 +7,7 @@ const sessionAge = 60 * 60 * 24 * 7;
 type HostedSession = { access_token: string; refresh_token: string; expires_at: number };
 export type HostedUser = { id: string; email?: string };
 export type WorkspaceAccess = { tenantId: string; user: HostedUser; accessToken: string; refreshedCookie?: string };
+export type BetaTask = { id: string; tenantId: string; title: string; description: string; product: string; status: "Open" | "In progress" | "Completed"; createdBy: string; createdAt: string; participantCount: number; joined: boolean };
 
 export function hostedAuthConfigured() {
   return Boolean(process.env.SUPABASE_URL || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY);
@@ -53,6 +54,34 @@ export async function signInWithPassword(email: string, password: string) {
   if (!membershipResponse.ok) throw new Error("Could not check workspace access. Apply the database setup from supabase/migrations first.");
   const memberships = await membershipResponse.json() as { workspace_id: string }[];
   return { session, user, tenantIds: memberships.map((item) => item.workspace_id), cookie: makeCookie(session) };
+}
+
+export async function completeHostedSetup(accessToken: string, refreshToken: string, expiresIn: number, password: string) {
+  const user = await getUser(accessToken);
+  if (!user?.id) throw new Error("This setup link is invalid or has expired. Request a new password setup email.");
+  const update = await providerFetch("/auth/v1/user", accessToken, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }),
+  });
+  const updated = await update.json().catch(() => ({})) as Record<string, unknown>;
+  if (!update.ok) throw new Error(typeof updated.msg === "string" ? updated.msg : typeof updated.message === "string" ? updated.message : "Could not set your password. Request a new setup link and try again.");
+  const membershipResponse = await providerFetch(`/rest/v1/workspace_memberships?select=workspace_id&user_id=eq.${encodeURIComponent(user.id)}`, accessToken);
+  if (!membershipResponse.ok) throw new Error("Your workspace access could not be loaded. Contact your administrator.");
+  const memberships = await membershipResponse.json() as { workspace_id: string }[];
+  if (!Array.isArray(memberships) || memberships.length === 0) throw new Error("Your account has no workspace access yet. Contact your administrator.");
+  const session: HostedSession = { access_token: accessToken, refresh_token: refreshToken, expires_at: Math.floor(Date.now() / 1000) + expiresIn };
+  return { user, tenantIds: memberships.map((item) => item.workspace_id), cookie: makeCookie(session) };
+}
+
+export async function sendPasswordRecovery(email: string) {
+  const { url, key } = config();
+  const response = await fetch(`${url}/auth/v1/recover?redirect_to=${encodeURIComponent("https://signal-bugsignal.vercel.app/")}`, {
+    method: "POST", headers: { "Content-Type": "application/json", apikey: key },
+    body: JSON.stringify({ email }), cache: "no-store",
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(typeof data.msg === "string" ? data.msg : typeof data.message === "string" ? data.message : "Could not send a password reset email right now.");
+  }
 }
 
 async function refresh(session: HostedSession): Promise<HostedSession | null> {
@@ -169,6 +198,36 @@ export async function hostedFindReport(access: WorkspaceAccess, reportId: string
   if (!response.ok) throw new Error(`Could not load report from Supabase (${response.status}).`);
   const rows = await response.json() as Record<string, unknown>[];
   return rows[0] ? rowToReport(rows[0]) : null;
+}
+
+export async function hostedBetaTasks(access: WorkspaceAccess): Promise<BetaTask[]> {
+  const response = await providerFetch(`/rest/v1/beta_tasks?select=*,beta_task_participants(user_id)&workspace_id=eq.${encodeURIComponent(access.tenantId)}&order=created_at.desc`, access.accessToken);
+  if (!response.ok) throw new Error(`Could not load beta tasks from Supabase (${response.status}).`);
+  const rows = await response.json() as Record<string, unknown>[];
+  return rows.map(row => {
+    const participants = Array.isArray(row.beta_task_participants) ? row.beta_task_participants as { user_id: string }[] : [];
+    return { id: String(row.id), tenantId: String(row.workspace_id), title: String(row.title), description: String(row.description), product: String(row.product), status: row.status as BetaTask["status"], createdBy: String(row.created_by), createdAt: String(row.created_at), participantCount: participants.length, joined: participants.some(p => p.user_id === access.user.id) };
+  });
+}
+
+export async function hostedCreateBetaTask(access: WorkspaceAccess, input: { title: string; description: string; product: string }): Promise<BetaTask> {
+  const response = await providerFetch("/rest/v1/beta_tasks?select=*", access.accessToken, { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify({ workspace_id: access.tenantId, created_by: access.user.id, ...input }) });
+  if (!response.ok) throw new Error(`Could not create beta task in Supabase (${response.status}).`);
+  const [row] = await response.json() as Record<string, unknown>[];
+  if (!row) throw new Error("Supabase saved no beta task row.");
+  return { id: String(row.id), tenantId: String(row.workspace_id), title: String(row.title), description: String(row.description), product: String(row.product), status: row.status as BetaTask["status"], createdBy: String(row.created_by), createdAt: String(row.created_at), participantCount: 0, joined: false };
+}
+
+export async function hostedJoinBetaTask(access: WorkspaceAccess, taskId: string): Promise<void> {
+  const response = await providerFetch("/rest/v1/beta_task_participants", access.accessToken, { method: "POST", headers: { "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates,return=minimal" }, body: JSON.stringify({ task_id: taskId, workspace_id: access.tenantId, user_id: access.user.id }) });
+  if (!response.ok) throw new Error(`Could not join beta task (${response.status}).`);
+}
+
+export async function hostedUpdateBetaTask(access: WorkspaceAccess, taskId: string, status: BetaTask["status"]): Promise<void> {
+  const response = await providerFetch(`/rest/v1/beta_tasks?id=eq.${encodeURIComponent(taskId)}&workspace_id=eq.${encodeURIComponent(access.tenantId)}&select=id`, access.accessToken, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify({ status, updated_at: new Date().toISOString() }) });
+  if (!response.ok) throw new Error(`Could not update beta task (${response.status}).`);
+  const rows = await response.json() as { id: string }[];
+  if (!rows.length) throw new Error("Only workspace owners and admins can update task status.");
 }
 
 function rowToReport(row: Record<string, unknown>): Report {
