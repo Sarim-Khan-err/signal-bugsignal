@@ -40,6 +40,7 @@ create index if not exists reports_workspace_created_idx on public.reports (work
 
 alter table public.workspace_memberships enable row level security;
 alter table public.reports enable row level security;
+alter table public.workspaces enable row level security;
 
 revoke all on public.workspaces, public.workspace_memberships, public.reports from anon, authenticated;
 grant select on public.workspace_memberships to authenticated;
