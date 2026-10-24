@@ -14,8 +14,11 @@ export async function POST(request: Request) {
     await sendPasswordRecovery(email.trim().toLowerCase());
     return NextResponse.json({ sent: true, message: "If an account matches that email, a fresh password reset link is on its way." }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    console.error("Password recovery email could not be sent", error);
+    const message = error instanceof Error ? error.message : "";
+    if (/rate.?limit|too many emails|over_email/i.test(message)) {
+      return NextResponse.json({ error: "Supabase’s built-in email service has reached its hourly limit. Wait about an hour, then request a new link." }, { status: 429, headers: { "Cache-Control": "no-store" } });
+    }
+    console.error("Password recovery email could not be sent", error instanceof Error ? error.name : "unknown error");
     return NextResponse.json({ error: "Could not send a password reset email right now. Please try again shortly." }, { status: 503, headers: { "Cache-Control": "no-store" } });
   }
 }
-
