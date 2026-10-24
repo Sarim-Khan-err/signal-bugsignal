@@ -3,7 +3,17 @@ import type { Report } from "@/lib/store";
 const MAX_ATTEMPTS = 2;
 const RETRY_DELAYS_MS = [300];
 
-type FastnDelivery = { status: "sent" | "not_configured" | "failed"; httpStatus?: number };
+type FastnDelivery = { status: "sent" | "not_configured" | "failed" | "quota_exceeded"; httpStatus?: number };
+
+function isExecutionQuotaExceeded(status: number, body: string): boolean {
+  if (status !== 429) return false;
+  try {
+    const error = JSON.parse(body) as { error?: unknown; dimension?: unknown };
+    return /quota_exceeded|executions_per_month/i.test(JSON.stringify(error));
+  } catch {
+    return /quota_exceeded|executions_per_month/i.test(body);
+  }
+}
 
 /** Send only the fields needed for report triage; reporter name and email stay in Signal. */
 export async function sendReportCreatedToFastn(report: Report): Promise<FastnDelivery> {
@@ -49,6 +59,10 @@ export async function sendReportCreatedToFastn(report: Report): Promise<FastnDel
         cache: "no-store",
         signal: AbortSignal.timeout(4_000),
       });
+      const responseBody = await response.text().catch(() => "");
+      if (isExecutionQuotaExceeded(response.status, responseBody)) {
+        return { status: "quota_exceeded", httpStatus: response.status };
+      }
       if (response.ok) return { status: "sent", httpStatus: response.status };
       if (response.status < 500 && response.status !== 429) {
         return { status: "failed", httpStatus: response.status };

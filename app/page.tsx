@@ -176,7 +176,7 @@ export default function Home() {
       const data = await response.json();
       if (!response.ok) { if (response.status === 401) await signOut(); throw new Error(data.error || "Could not save report"); }
       const report = data.report as Report;
-      setReports(prev => ({ ...prev, [tenantId]: [report, ...prev[tenantId]] })); setSelected(report.id); setFilter("All reports"); setForm({ title: "", customer: "", email: "", product: "", description: "", priority: "Medium" }); setShowNew(false); setNotice(data.fastn?.status === "sent" ? "Report saved and sent to Fastn for triage." : data.fastn?.status === "failed" ? "Report saved, but Fastn triage could not be reached." : data.fastn?.status === "not_configured" ? "Report saved. Fastn triage is not configured yet." : "Report saved to this workspace.");
+      setReports(prev => ({ ...prev, [tenantId]: [report, ...prev[tenantId]] })); setSelected(report.id); setFilter("All reports"); setForm({ title: "", customer: "", email: "", product: "", description: "", priority: "Medium" }); setShowNew(false); setNotice(data.fastn?.status === "sent" ? "Report saved and sent to Fastn for triage." : data.fastn?.status === "quota_exceeded" ? "Report saved. Fastn’s monthly execution quota is full, so triage couldn’t run. Ask Fastn to restore your workspace’s execution capacity." : data.fastn?.status === "failed" ? "Report saved, but Fastn triage could not be reached." : data.fastn?.status === "not_configured" ? "Report saved. Fastn triage is not configured yet." : "Report saved to this workspace.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Could not save report"); }
     finally { setSaving(false); }
   };
