@@ -240,14 +240,40 @@ export default function Home() {
 
 function avatarColor(s: string) { const colors = ["#f0ddc5", "#d8e5da", "#f2d7c9", "#e7e1cf", "#d7e1df", "#ead5c7"]; return colors[s.charCodeAt(0) % colors.length]; }
 function formatDate(value: string) { const date = new Date(value); if (Number.isNaN(date.getTime())) return value; const elapsed = Math.max(0, Date.now() - date.getTime()); if (elapsed < 60_000) return "Just now"; if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)} min ago`; if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)} hr ago`; return date.toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
+type FastnEmbedSession = { token: string; baseUrl: string; endOrgId: string };
+
+async function mintFastnEmbedSession(tenantId: string): Promise<FastnEmbedSession> {
+  const response = await fetch("/api/fastn/embed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tenantId }), cache: "no-store" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Could not connect to Fastn");
+  if (typeof data.token !== "string" || typeof data.baseUrl !== "string" || typeof data.endOrgId !== "string" || !data.endOrgId) {
+    throw new Error("Fastn returned an incomplete workspace session.");
+  }
+  return { token: data.token, baseUrl: data.baseUrl, endOrgId: data.endOrgId };
+}
+
 function FastnIntegrationPanel({ tenantId, onClose }: { tenantId: string; onClose: () => void }) {
-  const requestToken = async () => {
-    const response = await fetch("/api/fastn/embed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tenantId }), cache: "no-store" });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Could not connect to Fastn");
-    return { token: data.token as string, baseUrl: data.baseUrl as string };
+  const [session, setSession] = useState<FastnEmbedSession | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessionAttempt, setSessionAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    mintFastnEmbedSession(tenantId)
+      .then((value) => { if (!cancelled) setSession(value); })
+      .catch((error) => { if (!cancelled) setSessionError(error instanceof Error ? error.message : "Could not connect to Fastn"); });
+    return () => { cancelled = true; };
+  }, [tenantId, sessionAttempt]);
+
+  const refreshToken = async () => {
+    const refreshed = await mintFastnEmbedSession(tenantId);
+    if (session && refreshed.endOrgId !== session.endOrgId) {
+      throw new Error("Fastn returned a different workspace session. Reopen integrations to continue safely.");
+    }
+    return { token: refreshed.token, baseUrl: refreshed.baseUrl };
   };
-  return <div className="integration-backdrop" onClick={onClose}><section className="integration-panel" role="dialog" aria-modal="true" aria-label="Workspace integrations" onClick={event => event.stopPropagation()}><header className="integration-header"><div><div className="eyebrow"><span className="eyebrow-line" /> CUSTOMER CONNECTIONS</div><h2>Integrations</h2><p>Connect tools for this workspace. Each workspace receives its own Fastn customer scope.</p></div><button className="detail-close" aria-label="Close integrations" onClick={onClose}>×</button></header><FastnHub key={tenantId} orgId={`signal-${tenantId}`} getToken={requestToken} height={620} fallback={<div className="integration-state"><span className="integration-spinner" /> Requesting a secure Fastn session…</div>} renderError={(message, retry) => <div className="integration-state integration-error"><span className="integration-state-icon"><PlugIcon /></span><b>Fastn connection needs setup</b><p>{message}</p><small>Workspace identity is verified by Signal before each Fastn session.</small><button className="outline-button" onClick={retry}>Try again</button></div>} /></section></div>;
+
+  return <div className="integration-backdrop" onClick={onClose}><section className="integration-panel" role="dialog" aria-modal="true" aria-label="Workspace integrations" onClick={event => event.stopPropagation()}><header className="integration-header"><div><div className="eyebrow"><span className="eyebrow-line" /> CUSTOMER CONNECTIONS</div><h2>Integrations</h2><p>Connect tools for this workspace. Each workspace receives its own Fastn customer scope.</p></div><button className="detail-close" aria-label="Close integrations" onClick={onClose}>×</button></header>{session ? <FastnHub key={tenantId} orgId={session.endOrgId} token={session.token} baseUrl={session.baseUrl} getToken={refreshToken} height={620} fallback={<div className="integration-state"><span className="integration-spinner" /> Loading workspace integrations…</div>} renderError={(message, retry) => <div className="integration-state integration-error"><span className="integration-state-icon"><PlugIcon /></span><b>Fastn connection needs setup</b><p>{message}</p><small>Workspace identity is verified by Signal before each Fastn session.</small><button className="outline-button" onClick={retry}>Try again</button></div>} /> : <div className={sessionError ? "integration-state integration-error" : "integration-state"}>{sessionError ? <><span className="integration-state-icon"><PlugIcon /></span><b>Fastn session could not start</b><p>{sessionError}</p><small>Your workspace sign-in is checked before Fastn issues this session.</small><button className="outline-button" onClick={() => { setSessionError(null); setSessionAttempt(value => value + 1); }}>Try again</button></> : <><span className="integration-spinner" /> Requesting a secure Fastn session…</>}</div>}</section></div>;
 }
 function PulseIcon(){return <svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2.2-6 4.1 12 2.1-6H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
 function InboxIcon(){return <svg viewBox="0 0 24 24" fill="none"><path d="M4 4.8h16v14.4H4zM4 14h4l1.5 2h5L16 14h4" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>}
