@@ -1,6 +1,6 @@
 # Signal
 
-Signal gives B2B SaaS support teams one place to record customer-reported bugs, track investigation status, and send clear progress updates. Reports are isolated by workspace. The Integrations screen embeds Fastn's customer connection hub and requests short-lived tokens from Signal's server.
+Signal gives B2B SaaS support teams one place to record customer-reported bugs, track investigation status, and send clear progress updates. Reports are isolated by workspace. The Integrations screen embeds Fastn's customer connection hub and requests short-lived tokens from Signal's server. When configured, new reports also start a Fastn triage workflow.
 
 ## Run the local preview
 
@@ -48,13 +48,13 @@ Until configured, the app reports that email is unavailable and does not pretend
 
 The current application uses Next.js server routes and Node APIs. Deploy it on a host that supports the Next.js Node.js runtime (Vercel is the straightforward option); the Fastn Sites runtime is a separate platform and is not a drop-in host for this app.
 
-The app is deployed publicly at [signal-bugsignal.vercel.app](https://signal-bugsignal.vercel.app/) from the private repository `Sarim-Khan-err/signal-bugsignal`. Vercel production has `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`; Supabase Auth URL configuration points to the production HTTPS URL. The `sarimniaziii@gmail.com` account is an owner of both seeded workspaces. Reports are stored in Supabase, and the current reports table is empty. Preview deployments remain protected.
+The app is deployed publicly at [signal-bugsignal.vercel.app](https://signal-bugsignal.vercel.app/) from the private repository `Sarim-Khan-err/signal-bugsignal`. Vercel production has `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`; Supabase Auth URL configuration points to the production HTTPS URL. The designated admin account is an owner of both seeded workspaces. Reports are stored in Supabase, and the current reports table is empty. Preview deployments remain protected.
 
-Customer update delivery and Fastn integrations are not active in production yet because `RESEND_API_KEY`, `SIGNAL_FROM_EMAIL`, and `FASTN_API_KEY` have not been configured. Do not add the local preview passwords to production. Once Resend and Fastn are configured, test the full flow on a sample report and verify workspace isolation before inviting customer teams. Review recovery, backup, access, and retention settings before onboarding customers.
+Customer update delivery and Fastn integrations are not active in production yet because `RESEND_API_KEY`, `SIGNAL_FROM_EMAIL`, and the Fastn server and webhook settings have not been configured. Do not add the local preview passwords to production. Once Resend and Fastn are configured, test the full flow on a sample report and verify workspace isolation before inviting customer teams. Review recovery, backup, access, and retention settings before onboarding customers.
 
 ## Fastn setup
 
-The Integrations screen uses Fastn's official `@fastn-ai/embed` React hub. The server token route derives the customer scope from a verified Signal workspace session. Set `FASTN_API_KEY` and `FASTN_BASE_URL` privately. The partner key needs connector-read and customer-provisioning permissions. Publish connectors and workflows in a dedicated Fastn organization for Signal; do not reuse or edit another project's live integrations. Keep Fastn usage to setup and verification while on the free credit allowance.
+The Integrations screen uses Fastn's official `@fastn-ai/embed` React hub. The server token route derives the customer scope from a verified Signal workspace session and returns the deployment URL with its short-lived token. Set `FASTN_API_KEY` and `FASTN_BASE_URL` privately; the partner key needs connector-read and customer-provisioning permissions. New reports can call a Fastn webhook when both `FASTN_REPORT_CREATED_WEBHOOK_URL` and `FASTN_REPORT_CREATED_WEBHOOK_KEY` are set. The payload contains the report fields, the workspace ID, a Fastn customer ID (`signal-northstar` or `signal-orbit`), and `eventId` for trigger deduplication. It sends customer email and report text to Fastn and the workflow's connected apps, so use fictional test reports during setup. Missing Fastn settings leave report creation working and report the handoff as unconfigured; failed handoffs are logged and shown in the app. The Fastn organization already has unrelated video-review integrations in Live. Keep those untouched and build Signal workflows in the `Signal Hackathon` environment. The current organization-wide widget still contains the older integration groups and must be isolated or replaced before public use. Keep Fastn usage to setup and verification while on the free credit allowance.
 
 ## Hackathon disclosure
 
